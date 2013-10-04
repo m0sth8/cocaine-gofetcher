@@ -11,4 +11,5 @@ export GOOS=linux
 export GOARCH=amd64
 
 echo "Build"
-go build gofetcher
+cd src/gofetcher
+go get

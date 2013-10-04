@@ -6,4 +6,6 @@ echo "Set go path $CUR_DIR"
 export GOPATH=$CUR_DIR
 
 echo "Build"
-go build gofetcher
+# go build gofetcher
+cd src/gofetcher
+go get

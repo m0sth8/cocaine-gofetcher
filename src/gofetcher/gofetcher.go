@@ -1,12 +1,11 @@
 package main
 
 import (
-	"cocaine"
-	"codec"
+	"github.com/cocaine/cocaine-framework-go/cocaine"
+	"github.com/ugorji/go/codec"
 	"net/http"
 	"io/ioutil"
 	"strconv"
-	"fmt"
 )
 
 
@@ -104,16 +103,20 @@ func Get(request *cocaine.Request, response *cocaine.Response){
 	var (
 		mh codec.MsgpackHandle
 		h = &mh
+		timeout int64=5000
 	)
 	var res []interface{}
 	codec.NewDecoderBytes(requestBody, h).Decode(&res)
 	url := string(res[0].([]byte))
-	httpRequest := Request{method:"GET", url:url}
+	if len(res) > 1 {
+		timeout = int64(res[1].(uint64))
+	}
+	httpRequest := Request{method:"GET", url:url, timeout:timeout}
 	resp, err := performRequest(&httpRequest)
 	if err != nil {
 		response.Write([]interface{}{false, err.Error(), map[string][]string{}})
 	} else{
-		response.Write([]interface{}{true, fmt.Sprintf("%s", res[1].(int)), resp.header})
+		response.Write([]interface{}{true, resp.body, resp.header})
 	}
 	response.Close()
 }
