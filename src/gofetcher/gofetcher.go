@@ -11,6 +11,7 @@ import (
 	"errors"
 	"bytes"
 	"io"
+	"reflect"
 )
 
 const (
@@ -97,18 +98,22 @@ func performRequest(request *Request) (*Response, error) {
 
 // Normal methods
 
-func parseHeaders(rawHeaders interface {}) http.Header{
+func parseHeaders(rawHeaders map[string]interface {}) http.Header{
 	headers := make(http.Header)
-	for name, values := range rawHeaders.(map[string][]string) {
-		for _, value := range values {
-			headers.Add(name, value) // to transform in canonical form
+	for name, values := range rawHeaders {
+		for _, value := range values.([]interface {}) {
+			headers.Add(name, string(value.([]uint8))) // to transform in canonical form
 		}
 	}
 	return headers
 }
 
-func parseCookies(rawCookie interface {}) Cookies{
-	return rawCookie.(Cookies)
+func parseCookies(rawCookie map[string]interface {}) Cookies{
+	cookies := Cookies{}
+	for key, value := range rawCookie {
+		cookies[key] = string(value.([]uint8))
+	}
+	return cookies
 }
 
 func parseTimeout(rawTimeout interface {}) (timeout int64) {
@@ -132,6 +137,7 @@ func parseRequest(method string, requestBody []byte) (request *Request){
 		followRedirects bool=DefaultFollowRedirects
 		body *bytes.Buffer
 	)
+	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
 	var res []interface{}
 	codec.NewDecoderBytes(requestBody, h).Decode(&res)
 	url := string(res[0].([]uint8))
@@ -141,10 +147,10 @@ func parseRequest(method string, requestBody []byte) (request *Request){
 			timeout = parseTimeout(res[1])
 		}
 		if len(res) > 2 {
-			cookies = parseCookies(res[2])
+			cookies = parseCookies(res[2].(map[string]interface{}))
 		}
 		if len(res) > 3 {
-			headers = parseHeaders(res[3])
+			headers = parseHeaders(res[3].(map[string]interface{}))
 		}
 		if len(res) > 4 {
 			followRedirects = res[4].(bool)
@@ -157,10 +163,10 @@ func parseRequest(method string, requestBody []byte) (request *Request){
 			timeout = parseTimeout(res[2])
 		}
 		if len(res) > 3 {
-			cookies = parseCookies(res[3])
+			cookies = parseCookies(res[3].(map[string]interface{}))
 		}
 		if len(res) > 4 {
-			headers = parseHeaders(res[4])
+			headers = parseHeaders(res[4].(map[string]interface{}))
 		}
 		if len(res) > 5 {
 			followRedirects = res[5].(bool)
