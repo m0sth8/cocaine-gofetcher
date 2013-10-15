@@ -65,6 +65,10 @@ func performRequest(request *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	for name, value := range request.cookies{
+		httpRequest.AddCookie(&http.Cookie{Name:name, Value:value})
+	}
+	httpRequest.Header = request.headers
 	resultChan := make(chan responseAndError)
 	go func (){
 		res, err := httpClient.Do(httpRequest)
