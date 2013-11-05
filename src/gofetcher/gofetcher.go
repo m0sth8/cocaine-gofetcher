@@ -221,19 +221,24 @@ func HttpProxy(request *cocaine.Request, response *cocaine.Response){
 	var (
 		timeout int64 = DefaultTimeout
 	)
-	req := cocaine.UnpackProxyRequest(<-request.Read())
-	url := req.FormValue("url")
-	timeoutArg := req.FormValue("timeout")
-	if timeoutArg != "" {
-		tout, _ := strconv.Atoi(timeoutArg)
-		timeout = int64(tout)
-	}
-	httpRequest := Request{method:req.Method, url:url, timeout:timeout,
-		followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
-	resp, err := performRequest(&httpRequest)
+	req, err := cocaine.UnpackProxyRequest(<-request.Read())
 	if err != nil {
-		writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
+		writeHttpResponse(response, 500, "Could not unpack request to http request",
+			cocaine.Headers{{"Content-Type", "text/html"}})
 	} else {
-		writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
+		url := req.FormValue("url")
+		timeoutArg := req.FormValue("timeout")
+		if timeoutArg != "" {
+			tout, _ := strconv.Atoi(timeoutArg)
+			timeout = int64(tout)
+		}
+		httpRequest := Request{method:req.Method, url:url, timeout:timeout,
+			followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
+		resp, err := performRequest(&httpRequest)
+		if err != nil {
+			writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
+		} else {
+			writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
+		}
 	}
 }
