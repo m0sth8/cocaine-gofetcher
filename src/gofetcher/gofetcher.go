@@ -1,4 +1,4 @@
-package main
+package gofetcher
 
 import (
 	"github.com/cocaine/cocaine-framework-go/cocaine"
@@ -18,6 +18,10 @@ const (
 	DefaultTimeout = 5000
 	DefaultFollowRedirects = true
 )
+
+type Gofetcher struct {
+	logger *cocaine.Logger
+}
 
 type Cookies map[string]string
 
@@ -42,6 +46,13 @@ type Response struct {
 	header	http.Header
 }
 
+func NewGofetcher() *Gofetcher {
+	logger := cocaine.NewLogger()
+
+	gofetcher := Gofetcher{logger}
+	return &gofetcher
+}
+
 func noRedirect(_ *http.Request, via []*http.Request) error {
 	if len(via) > 0 {
 		return errors.New("stopped after first redirect")
@@ -49,14 +60,14 @@ func noRedirect(_ *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func performRequest(request *Request) (*Response, error) {
+func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) {
 	var (
 		err 			error
 		httpRequest    *http.Request
 		httpResponse   *http.Response
 		requestTimeout	time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
-	logger.Info(fmt.Sprintf("Request url %s, method %s, timeout %d", request.url, request.method, request.timeout))
+	gofetcher.logger.Info(fmt.Sprintf("Request url %s, method %s, timeout %d", request.url, request.method, request.timeout))
 	httpClient := &http.Client{}
 	if request.followRedirects == false {
 		httpClient.CheckRedirect = noRedirect
@@ -131,7 +142,7 @@ func parseTimeout(rawTimeout interface {}) (timeout int64) {
 	return timeout
 }
 
-func parseRequest(method string, requestBody []byte) (request *Request){
+func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request){
 	var (
 		mh codec.MsgpackHandle
 		h = &mh
@@ -186,7 +197,7 @@ func parseRequest(method string, requestBody []byte) (request *Request){
 	return request
 }
 
-func writeResponse(response *cocaine.Response, resp *Response, err error){
+func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, resp *Response, err error){
 	if err != nil {
 		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
 	} else{
@@ -195,35 +206,36 @@ func writeResponse(response *cocaine.Response, resp *Response, err error){
 	response.Close()
 }
 
-func Handler(method string, request *cocaine.Request, response *cocaine.Response){
+func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response){
 	requestBody := <- request.Read()
-	httpRequest := parseRequest(method, requestBody)
-	resp, err := performRequest(httpRequest)
-	writeResponse(response, resp, err)
+	httpRequest := gofetcher.parseRequest(method, requestBody)
+	resp, err := gofetcher.performRequest(httpRequest)
+	gofetcher.writeResponse(response, resp, err)
 }
 
-func GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
+func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
 	return func (request *cocaine.Request, response *cocaine.Response){
-		Handler(method, request, response)
+		gofetcher.handler(method, request, response)
 	}
 }
 
 // Http methods
 
-func writeHttpResponse(response *cocaine.Response, statusCode int, data interface{} , headers cocaine.Headers) {
+func (gofetcher *Gofetcher) writeHttpResponse(response *cocaine.Response, statusCode int,
+												data interface{}, headers cocaine.Headers) {
 	response.Write(cocaine.WriteHead(statusCode, headers))
 	response.Write(data)
 	response.Close()
 }
 
-func HttpProxy(request *cocaine.Request, response *cocaine.Response){
-	logger.Info("Http handler requested")
+func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocaine.Response){
+	gofetcher.logger.Info("Http handler requested")
 	var (
 		timeout int64 = DefaultTimeout
 	)
 	req, err := cocaine.UnpackProxyRequest(<-request.Read())
 	if err != nil {
-		writeHttpResponse(response, 500, "Could not unpack request to http request",
+		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
 			cocaine.Headers{{"Content-Type", "text/html"}})
 	} else {
 		url := req.FormValue("url")
@@ -234,11 +246,23 @@ func HttpProxy(request *cocaine.Request, response *cocaine.Response){
 		}
 		httpRequest := Request{method:req.Method, url:url, timeout:timeout,
 			followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
-		resp, err := performRequest(&httpRequest)
+		resp, err := gofetcher.performRequest(&httpRequest)
 		if err != nil {
-			writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
+			gofetcher.writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
 		} else {
-			writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
+			gofetcher.writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
 		}
+	}
+}
+
+func (gofetcher *Gofetcher) HttpEcho(request *cocaine.Request, response *cocaine.Response){
+	gofetcher.logger.Info("Http handler requested")
+	req, err := cocaine.UnpackProxyRequest(<-request.Read())
+	if err != nil {
+		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
+			cocaine.Headers{{"Content-Type", "text/html"}})
+	} else {
+		text := req.FormValue("text")
+		gofetcher.writeHttpResponse(response, 200, text, cocaine.Headers{{"Content-Type", "text/html"}})
 	}
 }
