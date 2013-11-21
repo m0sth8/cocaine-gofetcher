@@ -47,8 +47,11 @@ type Response struct {
 }
 
 func NewGofetcher() *Gofetcher {
-	logger := cocaine.NewLogger()
-
+	logger, err := cocaine.NewLogger()
+	if err != nil {
+		logger.Err(fmt.Sprintf("Could not initialize logger due to error: %v", err))
+		return nil
+	}
 	gofetcher := Gofetcher{logger}
 	return &gofetcher
 }

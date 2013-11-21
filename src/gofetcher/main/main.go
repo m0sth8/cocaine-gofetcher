@@ -19,7 +19,10 @@ func main(){
 			"proxy":      gofetcher.HttpProxy,
 		}
 
-		Worker := cocaine.NewWorker()
-		Worker.Loop(binds)
+		if worker, err := cocaine.NewWorker(); err == nil{
+			worker.Loop(binds)
+		}else{
+			panic(err)
+		}
 	}
 }
