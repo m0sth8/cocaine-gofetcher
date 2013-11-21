@@ -44,6 +44,7 @@ type Response struct {
 	httpResponse	*http.Response
 	body	[]byte
 	header	http.Header
+	runtime time.Duration
 }
 
 func NewGofetcher() *Gofetcher {
@@ -70,7 +71,8 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 		httpResponse   *http.Response
 		requestTimeout	time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
-	gofetcher.logger.Info(fmt.Sprintf("Request url %s, method %s, timeout %d", request.url, request.method, request.timeout))
+	gofetcher.logger.Info(fmt.Sprintf("Requested url: %s, method: %s, timeout: %d, headers: %v",
+		request.url, request.method, request.timeout, request.headers))
 	httpClient := &http.Client{}
 	if request.followRedirects == false {
 		httpClient.CheckRedirect = noRedirect
@@ -84,6 +86,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 	}
 	httpRequest.Header = request.headers
 	resultChan := make(chan responseAndError)
+	started := time.Now()
 	go func (){
 		res, err := httpClient.Do(httpRequest)
 		if err != nil {
@@ -109,7 +112,8 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 	if err != nil {
 		return nil, err
 	}
-	response := &Response{httpResponse: httpResponse, body: body, header: httpResponse.Header}
+	runtime := time.Since(started)
+	response := &Response{httpResponse: httpResponse, body: body, header: httpResponse.Header, runtime: runtime}
 	return response, nil
 
 }
@@ -200,20 +204,29 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 	return request
 }
 
-func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, resp *Response, err error){
+func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error){
 	if err != nil {
 		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
+		gofetcher.logger.Err(fmt.Sprintf("Error occured: %v, while downloading %s",
+			err.Error(), request.url))
 	} else{
 		response.Write([]interface{}{true, resp.body, resp.httpResponse.StatusCode, resp.header})
+		gofetcher.logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
+			resp.httpResponse.StatusCode, request.url, resp.runtime))
+		if resp.httpResponse.StatusCode >= 500 {
+			gofetcher.logger.Err(fmt.Sprintf("Response code: %d , url: %s, runtime: %v",
+				resp.httpResponse.StatusCode, request.url, resp.runtime))
+		}
+
 	}
-	response.Close()
 }
 
 func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response){
+	defer response.Close()
 	requestBody := <- request.Read()
 	httpRequest := gofetcher.parseRequest(method, requestBody)
 	resp, err := gofetcher.performRequest(httpRequest)
-	gofetcher.writeResponse(response, resp, err)
+	gofetcher.writeResponse(response, httpRequest, resp, err)
 }
 
 func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
@@ -225,14 +238,15 @@ func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Requ
 // Http methods
 
 func (gofetcher *Gofetcher) writeHttpResponse(response *cocaine.Response, statusCode int,
-												data interface{}, headers cocaine.Headers) {
+	data interface{}, headers cocaine.Headers) {
 	response.Write(cocaine.WriteHead(statusCode, headers))
 	response.Write(data)
-	response.Close()
+	gofetcher.logger.Info("Http response writed")
+
 }
 
 func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocaine.Response){
-	gofetcher.logger.Info("Http handler requested")
+	defer response.Close()
 	var (
 		timeout int64 = DefaultTimeout
 	)
@@ -240,6 +254,8 @@ func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocain
 	if err != nil {
 		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
 			cocaine.Headers{{"Content-Type", "text/html"}})
+		gofetcher.logger.Err("Could not unpack request to http request")
+
 	} else {
 		url := req.FormValue("url")
 		timeoutArg := req.FormValue("timeout")
@@ -252,6 +268,8 @@ func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocain
 		resp, err := gofetcher.performRequest(&httpRequest)
 		if err != nil {
 			gofetcher.writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
+			gofetcher.logger.Err("Gofetcher error: " + err.Error())
+
 		} else {
 			gofetcher.writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
 		}
@@ -259,7 +277,6 @@ func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocain
 }
 
 func (gofetcher *Gofetcher) HttpEcho(request *cocaine.Request, response *cocaine.Response){
-	gofetcher.logger.Info("Http handler requested")
 	req, err := cocaine.UnpackProxyRequest(<-request.Read())
 	if err != nil {
 		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
