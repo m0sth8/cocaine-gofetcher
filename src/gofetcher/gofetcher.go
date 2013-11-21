@@ -99,10 +99,17 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 	// Read more about timeouts: https://code.google.com/p/go/issues/detail?id=3362
 	//
 	select {
-		case result := <- resultChan:
-			httpResponse, err = result.res, result.err
-		case <- time.After(requestTimeout):
-			err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", requestTimeout.String()))
+	case result := <- resultChan:
+		httpResponse, err = result.res, result.err
+	case <- time.After(requestTimeout):
+		err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", requestTimeout.String()))
+		go func(){
+			// close httpResponse when it ready
+			result := <- resultChan
+			if result.res != nil {
+				result.res.Body.Close()
+			}
+		}()
 	}
 	if err != nil {
 		return nil, err
