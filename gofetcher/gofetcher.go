@@ -239,52 +239,43 @@ func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Requ
 
 // Http methods
 
-func (gofetcher *Gofetcher) writeHttpResponse(response *cocaine.Response, statusCode int,
-	data interface{}, headers cocaine.Headers) {
-	response.Write(cocaine.WriteHead(statusCode, headers))
-	response.Write(data)
-	gofetcher.logger.Info("Http response writed")
-
-}
-
-func (gofetcher *Gofetcher) HttpProxy(request *cocaine.Request, response *cocaine.Response){
-	defer response.Close()
+func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request){
 	var (
 		timeout int64 = DefaultTimeout
 	)
-	req, err := cocaine.UnpackProxyRequest(<-request.Read())
+	url := req.FormValue("url")
+	timeoutArg := req.FormValue("timeout")
+	if timeoutArg != "" {
+		tout, _ := strconv.Atoi(timeoutArg)
+		timeout = int64(tout)
+	}
+	httpRequest := Request{method:req.Method, url:url, timeout:timeout,
+		followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
+	resp, err := gofetcher.performRequest(&httpRequest)
 	if err != nil {
-		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
-			cocaine.Headers{{"Content-Type", "text/html"}})
-		gofetcher.logger.Err("Could not unpack request to http request")
+		res.Header().Set("Content-Type", "text/html")
+		res.WriteHeader(500)
+		res.Write([]byte(err.Error()))
+		gofetcher.Logger.Err("Gofetcher error: " + err.Error())
 
 	} else {
-		url := req.FormValue("url")
-		timeoutArg := req.FormValue("timeout")
-		if timeoutArg != "" {
-			tout, _ := strconv.Atoi(timeoutArg)
-			timeout = int64(tout)
+		for key, values := range(resp.header){
+			for _, value := range(values){
+				res.Header().Add(key, value)
+			}
 		}
-		httpRequest := Request{method:req.Method, url:url, timeout:timeout,
-			followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
-		resp, err := gofetcher.performRequest(&httpRequest)
-		if err != nil {
-			gofetcher.writeHttpResponse(response, 500, err.Error(), cocaine.Headers{{"Content-Type", "text/html"}})
-			gofetcher.logger.Err("Gofetcher error: " + err.Error())
-
-		} else {
-			gofetcher.writeHttpResponse(response, 200, resp.body, cocaine.HttpHeaderToCocaineHeader(resp.header))
+		res.WriteHeader(200)
+		if _, err := res.Write(resp.body); err != nil {
+			gofetcher.Logger.Errf("Error: %v", err)
 		}
 	}
 }
 
-func (gofetcher *Gofetcher) HttpEcho(request *cocaine.Request, response *cocaine.Response){
-	req, err := cocaine.UnpackProxyRequest(<-request.Read())
-	if err != nil {
-		gofetcher.writeHttpResponse(response, 500, "Could not unpack request to http request",
-			cocaine.Headers{{"Content-Type", "text/html"}})
-	} else {
-		text := req.FormValue("text")
-		gofetcher.writeHttpResponse(response, 200, text, cocaine.Headers{{"Content-Type", "text/html"}})
-	}
+func (gofetcher *Gofetcher) HttpEcho(res http.ResponseWriter, req *http.Request){
+	gofetcher.Logger.Info("Http echo handler requested")
+	text := req.FormValue("text")
+	res.Header().Set("Content-Type", "text/html")
+	res.WriteHeader(200)
+	res.Write([]byte(text))
 }
+
