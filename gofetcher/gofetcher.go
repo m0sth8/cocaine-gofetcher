@@ -20,7 +20,7 @@ const (
 )
 
 type Gofetcher struct {
-	logger *cocaine.Logger
+	Logger *cocaine.Logger
 }
 
 type Cookies map[string]string
@@ -50,7 +50,7 @@ type Response struct {
 func NewGofetcher() *Gofetcher {
 	logger, err := cocaine.NewLogger()
 	if err != nil {
-		logger.Err(fmt.Sprintf("Could not initialize logger due to error: %v", err))
+		fmt.Printf("Could not initialize logger due to error: %v", err)
 		return nil
 	}
 	gofetcher := Gofetcher{logger}
@@ -71,7 +71,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 		httpResponse   *http.Response
 		requestTimeout	time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
-	gofetcher.logger.Info(fmt.Sprintf("Requested url: %s, method: %s, timeout: %d, headers: %v",
+	gofetcher.Logger.Info(fmt.Sprintf("Requested url: %s, method: %s, timeout: %d, headers: %v",
 		request.url, request.method, request.timeout, request.headers))
 	httpClient := &http.Client{}
 	if request.followRedirects == false {
@@ -214,17 +214,12 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error){
 	if err != nil {
 		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
-		gofetcher.logger.Err(fmt.Sprintf("Error occured: %v, while downloading %s",
+		gofetcher.Logger.Err(fmt.Sprintf("Error occured: %v, while downloading %s",
 			err.Error(), request.url))
 	} else{
 		response.Write([]interface{}{true, resp.body, resp.httpResponse.StatusCode, resp.header})
-		gofetcher.logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
+		gofetcher.Logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
 			resp.httpResponse.StatusCode, request.url, resp.runtime))
-		if resp.httpResponse.StatusCode >= 500 {
-			gofetcher.logger.Err(fmt.Sprintf("Response code: %d , url: %s, runtime: %v",
-				resp.httpResponse.StatusCode, request.url, resp.runtime))
-		}
-
 	}
 }
 
