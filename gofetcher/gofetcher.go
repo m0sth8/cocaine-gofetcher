@@ -1,21 +1,21 @@
 package gofetcher
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"github.com/cocaine/cocaine-framework-go/cocaine"
 	"github.com/ugorji/go/codec"
-	"net/http"
+	"io"
 	"io/ioutil"
+	"net/http"
+	"reflect"
 	"strconv"
 	"time"
-	"fmt"
-	"errors"
-	"bytes"
-	"io"
-	"reflect"
 )
 
 const (
-	DefaultTimeout = 5000
+	DefaultTimeout         = 5000
 	DefaultFollowRedirects = true
 )
 
@@ -26,25 +26,25 @@ type Gofetcher struct {
 type Cookies map[string]string
 
 type Request struct {
-	method    string
-	url       string
-	body	io.Reader
-	timeout	int64
-	cookies	Cookies
-	headers http.Header
+	method          string
+	url             string
+	body            io.Reader
+	timeout         int64
+	cookies         Cookies
+	headers         http.Header
 	followRedirects bool
 }
 
-type responseAndError struct{
+type responseAndError struct {
 	res *http.Response
 	err error
 }
 
 type Response struct {
-	httpResponse	*http.Response
-	body	[]byte
-	header	http.Header
-	runtime time.Duration
+	httpResponse *http.Response
+	body         []byte
+	header       http.Header
+	runtime      time.Duration
 }
 
 func NewGofetcher() *Gofetcher {
@@ -66,10 +66,10 @@ func noRedirect(_ *http.Request, via []*http.Request) error {
 
 func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) {
 	var (
-		err 			error
+		err            error
 		httpRequest    *http.Request
 		httpResponse   *http.Response
-		requestTimeout	time.Duration = time.Duration(request.timeout) * time.Millisecond
+		requestTimeout time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
 	gofetcher.Logger.Info(fmt.Sprintf("Requested url: %s, method: %s, timeout: %d, headers: %v",
 		request.url, request.method, request.timeout, request.headers))
@@ -81,13 +81,13 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 	if err != nil {
 		return nil, err
 	}
-	for name, value := range request.cookies{
-		httpRequest.AddCookie(&http.Cookie{Name:name, Value:value})
+	for name, value := range request.cookies {
+		httpRequest.AddCookie(&http.Cookie{Name: name, Value: value})
 	}
 	httpRequest.Header = request.headers
 	resultChan := make(chan responseAndError)
 	started := time.Now()
-	go func (){
+	go func() {
 		res, err := httpClient.Do(httpRequest)
 		if err != nil {
 			resultChan <- responseAndError{nil, err}
@@ -99,13 +99,13 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 	// Read more about timeouts: https://code.google.com/p/go/issues/detail?id=3362
 	//
 	select {
-	case result := <- resultChan:
+	case result := <-resultChan:
 		httpResponse, err = result.res, result.err
-	case <- time.After(requestTimeout):
+	case <-time.After(requestTimeout):
 		err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", requestTimeout.String()))
-		go func(){
+		go func() {
 			// close httpResponse when it ready
-			result := <- resultChan
+			result := <-resultChan
 			if result.res != nil {
 				result.res.Body.Close()
 			}
@@ -127,17 +127,17 @@ func (gofetcher *Gofetcher) performRequest(request *Request) (*Response, error) 
 
 // Normal methods
 
-func parseHeaders(rawHeaders map[string]interface {}) http.Header{
+func parseHeaders(rawHeaders map[string]interface{}) http.Header {
 	headers := make(http.Header)
 	for name, values := range rawHeaders {
-		for _, value := range values.([]interface {}) {
+		for _, value := range values.([]interface{}) {
 			headers.Add(name, string(value.([]uint8))) // to transform in canonical form
 		}
 	}
 	return headers
 }
 
-func parseCookies(rawCookie map[string]interface {}) Cookies{
+func parseCookies(rawCookie map[string]interface{}) Cookies {
 	cookies := Cookies{}
 	for key, value := range rawCookie {
 		cookies[key] = string(value.([]uint8))
@@ -145,7 +145,7 @@ func parseCookies(rawCookie map[string]interface {}) Cookies{
 	return cookies
 }
 
-func parseTimeout(rawTimeout interface {}) (timeout int64) {
+func parseTimeout(rawTimeout interface{}) (timeout int64) {
 	// is it possible to got timeout in int64 instead of uint64?
 	switch rawTimeout.(type) {
 	case uint64:
@@ -156,15 +156,15 @@ func parseTimeout(rawTimeout interface {}) (timeout int64) {
 	return timeout
 }
 
-func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request){
+func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request) {
 	var (
-		mh codec.MsgpackHandle
-		h = &mh
-		timeout int64=DefaultTimeout
-		cookies Cookies
-		headers = make(http.Header)
-		followRedirects bool=DefaultFollowRedirects
-		body *bytes.Buffer
+		mh              codec.MsgpackHandle
+		h                     = &mh
+		timeout         int64 = DefaultTimeout
+		cookies         Cookies
+		headers              = make(http.Header)
+		followRedirects bool = DefaultFollowRedirects
+		body            *bytes.Buffer
 	)
 	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
 	var res []interface{}
@@ -202,44 +202,44 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 		}
 	}
 
-	request = &Request{method: method, url:url, timeout:timeout,
+	request = &Request{method: method, url: url, timeout: timeout,
 		followRedirects: followRedirects,
-		cookies:cookies, headers:headers}
+		cookies:         cookies, headers: headers}
 	if body != nil {
 		request.body = body
 	}
 	return request
 }
 
-func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error){
+func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error) {
 	if err != nil {
 		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
 		gofetcher.Logger.Err(fmt.Sprintf("Error occured: %v, while downloading %s",
 			err.Error(), request.url))
-	} else{
+	} else {
 		response.Write([]interface{}{true, resp.body, resp.httpResponse.StatusCode, resp.header})
 		gofetcher.Logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
 			resp.httpResponse.StatusCode, request.url, resp.runtime))
 	}
 }
 
-func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response){
+func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
 	defer response.Close()
-	requestBody := <- request.Read()
+	requestBody := <-request.Read()
 	httpRequest := gofetcher.parseRequest(method, requestBody)
 	resp, err := gofetcher.performRequest(httpRequest)
 	gofetcher.writeResponse(response, httpRequest, resp, err)
 }
 
 func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
-	return func (request *cocaine.Request, response *cocaine.Response){
+	return func(request *cocaine.Request, response *cocaine.Response) {
 		gofetcher.handler(method, request, response)
 	}
 }
 
 // Http methods
 
-func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request){
+func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request) {
 	var (
 		timeout int64 = DefaultTimeout
 	)
@@ -249,8 +249,8 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 		tout, _ := strconv.Atoi(timeoutArg)
 		timeout = int64(tout)
 	}
-	httpRequest := Request{method:req.Method, url:url, timeout:timeout,
-		followRedirects:DefaultFollowRedirects, headers: req.Header, body: req.Body}
+	httpRequest := Request{method: req.Method, url: url, timeout: timeout,
+		followRedirects: DefaultFollowRedirects, headers: req.Header, body: req.Body}
 	resp, err := gofetcher.performRequest(&httpRequest)
 	if err != nil {
 		res.Header().Set("Content-Type", "text/html")
@@ -259,8 +259,8 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 		gofetcher.Logger.Err("Gofetcher error: " + err.Error())
 
 	} else {
-		for key, values := range(resp.header){
-			for _, value := range(values){
+		for key, values := range resp.header {
+			for _, value := range values {
 				res.Header().Add(key, value)
 			}
 		}
@@ -271,11 +271,10 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 	}
 }
 
-func (gofetcher *Gofetcher) HttpEcho(res http.ResponseWriter, req *http.Request){
+func (gofetcher *Gofetcher) HttpEcho(res http.ResponseWriter, req *http.Request) {
 	gofetcher.Logger.Info("Http echo handler requested")
 	text := req.FormValue("text")
 	res.Header().Set("Content-Type", "text/html")
 	res.WriteHeader(200)
 	res.Write([]byte(text))
 }
-
