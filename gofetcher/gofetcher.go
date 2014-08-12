@@ -21,6 +21,15 @@ const (
 	DefaultFollowRedirects = true
 )
 
+type WarnError struct {
+	err error
+}
+
+func (s *WarnError) Error() string {return s.err.Error()}
+func NewWarn(err error) *WarnError {
+	return &WarnError{err: err}
+}
+
 type Gofetcher struct {
 	Logger *cocaine.Logger
 	Transport *http.Transport
@@ -75,9 +84,12 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		httpResponse   *http.Response
 		requestTimeout time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
-	gofetcher.Logger.Info(fmt.Sprintf("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
-		request.url, request.method, request.timeout, request.headers, attempt))
-	httpClient := &http.Client{Transport: gofetcher.Transport}
+	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
+		request.url, request.method, request.timeout, request.headers, attempt)
+	httpClient := &http.Client{
+		Transport: gofetcher.Transport,
+		Timeout: requestTimeout,
+	}
 	if request.followRedirects == false {
 		httpClient.CheckRedirect = noRedirect
 	}
@@ -95,7 +107,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		res, err := httpClient.Do(httpRequest)
 		resultChan <- responseAndError{res, err}
 	}()
-	// http connection stay active after timeout exceeded, cause we can't close it using current client api.
+	// http connection stay active after timeout exceeded in go <1.3, cause we can't close it using current client api.
 	// Read more about timeouts: https://code.google.com/p/go/issues/detail?id=3362
 	//
 	select {
@@ -119,19 +131,19 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 			if urlError, ok := err.(*url.Error); ok {
 				// golang bug: golang.org/issue/3514
 				if urlError.Err == io.EOF {
-					gofetcher.Logger.Info(fmt.Sprintf("Got EOF error while loading %s, attempt(%d)", request.url, attempt))
+					gofetcher.Logger.Infof("Got EOF error while loading %s, attempt(%d)", request.url, attempt)
 					if attempt == 1 {
 						return gofetcher.performRequest(request, attempt + 1)
 					}
 				}
 			}
-			return nil, err
+			return nil, NewWarn(err)
 		}
 	} else {
 		defer httpResponse.Body.Close()
 		body, err = ioutil.ReadAll(httpResponse.Body)
 		if err != nil {
-			return nil, err
+			return nil, NewWarn(err)
 		}
 	}
 	runtime := time.Since(started)
@@ -228,9 +240,14 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 
 func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error) {
 	if err != nil {
+		if _, casted := err.(*WarnError); casted {
+			gofetcher.Logger.Warnf("Error occured: %v, while downloading %s",
+				err.Error(), request.url)
+		} else {
+			gofetcher.Logger.Errf("Error occured: %v, while downloading %s",
+				err.Error(), request.url)
+		}
 		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
-		gofetcher.Logger.Err(fmt.Sprintf("Error occured: %v, while downloading %s",
-			err.Error(), request.url))
 	} else {
 		response.Write([]interface{}{true, resp.body, resp.httpResponse.StatusCode, resp.header})
 		gofetcher.Logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
@@ -271,7 +288,11 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 		res.Header().Set("Content-Type", "text/html")
 		res.WriteHeader(500)
 		res.Write([]byte(err.Error()))
-		gofetcher.Logger.Err("Gofetcher error: " + err.Error())
+		if _, casted := err.(*WarnError); casted {
+			gofetcher.Logger.Warnf("Gofetcher error: %v", err)
+		} else {
+			gofetcher.Logger.Errf("Gofetcher error: %v", err)
+		}
 
 	} else {
 		for key, values := range resp.header {
