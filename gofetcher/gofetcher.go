@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -25,14 +26,15 @@ type WarnError struct {
 	err error
 }
 
-func (s *WarnError) Error() string {return s.err.Error()}
+func (s *WarnError) Error() string { return s.err.Error() }
+
 func NewWarn(err error) *WarnError {
 	return &WarnError{err: err}
 }
 
 type Gofetcher struct {
-	Logger *cocaine.Logger
-	Transport *http.Transport
+	Logger    *cocaine.Logger
+	Transport http.RoundTripper
 }
 
 type Cookies map[string]string
@@ -65,7 +67,14 @@ func NewGofetcher() *Gofetcher {
 		fmt.Printf("Could not initialize logger due to error: %v", err)
 		return nil
 	}
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	gofetcher := Gofetcher{logger, transport}
 	return &gofetcher
 }
