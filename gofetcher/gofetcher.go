@@ -20,7 +20,22 @@ import (
 const (
 	DefaultTimeout         = 5000
 	DefaultFollowRedirects = true
+	KeepAliveTimeout	   = 30
 )
+
+// took from httputil/reverseproxy.go
+// Hop-by-hop headers. These are removed when sent to the backend.
+// http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
+var hopHeaders = []string{
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te", // canonicalized version of "TE"
+	"Trailers",
+	"Transfer-Encoding",
+	"Upgrade",
+}
 
 type WarnError struct {
 	err error
@@ -71,7 +86,7 @@ func NewGofetcher() *Gofetcher {
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
 			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			KeepAlive: KeepAliveTimeout * time.Second,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
@@ -110,6 +125,19 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		httpRequest.AddCookie(&http.Cookie{Name: name, Value: value})
 	}
 	httpRequest.Header = request.headers
+
+	// Remove hop-by-hop headers to the backend.  Especially
+	// important is "Connection" because we want a persistent
+	// connection, regardless of what the client sent to us.  This
+	// is modifying the same underlying map from req (shallow
+	// copied above) so we only copy it if necessary.
+	for _, h := range hopHeaders {
+		httpRequest.Header.Del(h)
+	}
+	httpRequest.Header.Add("Connection", "keep-alive")
+	httpRequest.Header.Add("Keep-Alive", fmt.Sprintf("%d", KeepAliveTimeout))
+
+
 	resultChan := make(chan responseAndError)
 	started := time.Now()
 	go func() {
@@ -156,6 +184,9 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		}
 	}
 	runtime := time.Since(started)
+	for _, h := range hopHeaders {
+		httpResponse.Header.Del(h)
+	}
 	response := &Response{httpResponse: httpResponse, body: body, header: httpResponse.Header, runtime: runtime}
 	return response, nil
 
