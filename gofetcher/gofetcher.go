@@ -20,7 +20,7 @@ import (
 const (
 	DefaultTimeout         = 5000
 	DefaultFollowRedirects = true
-	KeepAliveTimeout	   = 30
+	KeepAliveTimeout       = 30
 )
 
 // took from httputil/reverseproxy.go
@@ -50,6 +50,8 @@ func NewWarn(err error) *WarnError {
 type Gofetcher struct {
 	Logger    *cocaine.Logger
 	Transport http.RoundTripper
+
+	UserAgent string
 }
 
 type Cookies map[string]string
@@ -90,8 +92,12 @@ func NewGofetcher() *Gofetcher {
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	gofetcher := Gofetcher{logger, transport}
+	gofetcher := Gofetcher{logger, transport, ""}
 	return &gofetcher
+}
+
+func (gofetcher *Gofetcher) SetUserAgent(userAgent string) {
+	gofetcher.UserAgent = userAgent
 }
 
 func noRedirect(_ *http.Request, via []*http.Request) error {
@@ -112,7 +118,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		request.url, request.method, request.timeout, request.headers, attempt)
 	httpClient := &http.Client{
 		Transport: gofetcher.Transport,
-		Timeout: requestTimeout,
+		Timeout:   requestTimeout,
 	}
 	if request.followRedirects == false {
 		httpClient.CheckRedirect = noRedirect
@@ -137,6 +143,9 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	httpRequest.Header.Add("Connection", "keep-alive")
 	httpRequest.Header.Add("Keep-Alive", fmt.Sprintf("%d", KeepAliveTimeout))
 
+	if gofetcher.UserAgent != "" && len(httpRequest["User-Agent"]) == 0 {
+		httpRequest.Header.Set("User-Agent", gofetcher.UserAgent)
+	}
 
 	resultChan := make(chan responseAndError)
 	started := time.Now()
@@ -170,7 +179,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 				if urlError.Err == io.EOF {
 					gofetcher.Logger.Infof("Got EOF error while loading %s, attempt(%d)", request.url, attempt)
 					if attempt == 1 {
-						return gofetcher.performRequest(request, attempt + 1)
+						return gofetcher.performRequest(request, attempt+1)
 					}
 				}
 			}
