@@ -143,7 +143,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	httpRequest.Header.Add("Connection", "keep-alive")
 	httpRequest.Header.Add("Keep-Alive", fmt.Sprintf("%d", KeepAliveTimeout))
 
-	if gofetcher.UserAgent != "" && len(httpRequest["User-Agent"]) == 0 {
+	if gofetcher.UserAgent != "" && len(httpRequest.Header["User-Agent"]) == 0 {
 		httpRequest.Header.Set("User-Agent", gofetcher.UserAgent)
 	}
 
