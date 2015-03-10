@@ -84,15 +84,22 @@ func NewGofetcher() *Gofetcher {
 		fmt.Printf("Could not initialize logger due to error: %v", err)
 		return nil
 	}
+
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: KeepAliveTimeout * time.Second,
+			DualStack: true,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	gofetcher := Gofetcher{logger, transport, ""}
+
+	gofetcher := Gofetcher{
+		Logger:    logger,
+		Transport: transport,
+		UserAgent: "",
+	}
 	return &gofetcher
 }
 
@@ -116,6 +123,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	)
 	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
 		request.url, request.method, request.timeout, request.headers, attempt)
+
 	httpClient := &http.Client{
 		Transport: gofetcher.Transport,
 		Timeout:   requestTimeout,
@@ -128,7 +136,10 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		return nil, err
 	}
 	for name, value := range request.cookies {
-		httpRequest.AddCookie(&http.Cookie{Name: name, Value: value})
+		httpRequest.AddCookie(&http.Cookie{
+			Name:  name,
+			Value: value,
+		})
 	}
 	httpRequest.Header = request.headers
 
@@ -151,24 +162,25 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	started := time.Now()
 	go func() {
 		res, err := httpClient.Do(httpRequest)
-		resultChan <- responseAndError{res, err}
+		select {
+		case resultChan <- responseAndError{res, err}:
+		default:
+			// if the deadline has expired
+			if res != nil {
+				res.Body.Close()
+			}
+		}
 	}()
+
 	// http connection stay active after timeout exceeded in go <1.3, cause we can't close it using current client api.
 	// Read more about timeouts: https://code.google.com/p/go/issues/detail?id=3362
-	//
 	select {
 	case result := <-resultChan:
 		httpResponse, err = result.res, result.err
 	case <-time.After(requestTimeout):
 		err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", requestTimeout.String()))
-		go func() {
-			// close httpResponse when it ready
-			result := <-resultChan
-			if result.res != nil {
-				result.res.Body.Close()
-			}
-		}()
 	}
+
 	body := []byte{}
 	if err != nil {
 		// special case for redirect failure (returns both response and error)
@@ -192,11 +204,18 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 			return nil, NewWarn(err)
 		}
 	}
+
 	runtime := time.Since(started)
 	for _, h := range hopHeaders {
 		httpResponse.Header.Del(h)
 	}
-	response := &Response{httpResponse: httpResponse, body: body, header: httpResponse.Header, runtime: runtime}
+
+	response := &Response{
+		httpResponse: httpResponse,
+		body:         body,
+		header:       httpResponse.Header,
+		runtime:      runtime,
+	}
 	return response, nil
 
 }
@@ -204,7 +223,7 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 // Normal methods
 
 func parseHeaders(rawHeaders map[string]interface{}) http.Header {
-	headers := make(http.Header)
+	headers := make(http.Header, len(rawHeaders))
 	for name, values := range rawHeaders {
 		for _, value := range values.([]interface{}) {
 			headers.Add(name, string(value.([]uint8))) // to transform in canonical form
@@ -235,16 +254,19 @@ func parseTimeout(rawTimeout interface{}) (timeout int64) {
 func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request) {
 	var (
 		mh              codec.MsgpackHandle
-		h                     = &mh
-		timeout         int64 = DefaultTimeout
+		h               = &mh
+		timeout         DefaultTimeout
 		cookies         Cookies
-		headers              = make(http.Header)
-		followRedirects bool = DefaultFollowRedirects
+		headers         = make(http.Header)
+		followRedirects DefaultFollowRedirects
 		body            *bytes.Buffer
 	)
+
 	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
+
 	var res []interface{}
 	codec.NewDecoderBytes(requestBody, h).Decode(&res)
+
 	url := string(res[0].([]uint8))
 	switch {
 	case method == "GET" || method == "HEAD" || method == "DELETE":
@@ -276,14 +298,22 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 		if len(res) > 5 {
 			followRedirects = res[5].(bool)
 		}
+	default:
+		return nil
 	}
 
-	request = &Request{method: method, url: url, timeout: timeout,
+	request = &Request{
+		method:          method,
+		url:             url,
+		timeout:         timeout,
 		followRedirects: followRedirects,
-		cookies:         cookies, headers: headers}
+		cookies:         cookies,
+		headers:         headers,
+	}
 	if body != nil {
 		request.body = body
 	}
+
 	return request
 }
 
@@ -324,14 +354,23 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 	var (
 		timeout int64 = DefaultTimeout
 	)
+
 	url := req.FormValue("url")
 	timeoutArg := req.FormValue("timeout")
 	if timeoutArg != "" {
 		tout, _ := strconv.Atoi(timeoutArg)
 		timeout = int64(tout)
 	}
-	httpRequest := Request{method: req.Method, url: url, timeout: timeout,
-		followRedirects: DefaultFollowRedirects, headers: req.Header, body: req.Body}
+
+	httpRequest := Request{
+		method:          req.Method,
+		url:             url,
+		timeout:         timeout,
+		followRedirects: DefaultFollowRedirects,
+		headers:         req.Header,
+		body:            req.Body,
+	}
+
 	resp, err := gofetcher.performRequest(&httpRequest, 1)
 	if err != nil {
 		res.Header().Set("Content-Type", "text/html")
