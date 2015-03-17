@@ -339,7 +339,13 @@ func (gofetcher *Gofetcher) writeResponse(response cocaine.Response, request *Re
 
 func (gofetcher *Gofetcher) handler(method string, request cocaine.Request, response cocaine.Response) {
 	defer response.Close()
-	requestBody := <-request.Read()
+
+	requestBody, err := request.Read()
+	if err != nil {
+		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
+		return
+	}
+
 	httpRequest := gofetcher.parseRequest(method, requestBody)
 	resp, err := gofetcher.performRequest(httpRequest, 1)
 	gofetcher.writeResponse(response, httpRequest, resp, err)

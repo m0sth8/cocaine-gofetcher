@@ -5,24 +5,23 @@ import (
 	"github.com/m0sth8/cocaine-gofetcher/gofetcher"
 )
 
-func main(){
+func main() {
 	fetcher := gofetcher.NewGofetcher()
-	if fetcher != nil{
+	if fetcher != nil {
 		binds := map[string]cocaine.EventHandler{
-			"get": fetcher.GetHandler("GET"),
-			"head": fetcher.GetHandler("HEAD"),
-			"post": fetcher.GetHandler("POST"),
-			"put": fetcher.GetHandler("PUT"),
-			"patch": fetcher.GetHandler("PATCH"),
+			"get":    fetcher.GetHandler("GET"),
+			"head":   fetcher.GetHandler("HEAD"),
+			"post":   fetcher.GetHandler("POST"),
+			"put":    fetcher.GetHandler("PUT"),
+			"patch":  fetcher.GetHandler("PATCH"),
 			"delete": fetcher.GetHandler("DELETE"),
 		}
 
-
-		if worker, err := cocaine.NewWorker(); err == nil{
-			worker.Loop(binds)
-		}else{
+		worker, err := cocaine.NewWorker()
+		if err != nil {
 			panic(err)
 		}
+
+		worker.Run(binds)
 	}
 }
-
