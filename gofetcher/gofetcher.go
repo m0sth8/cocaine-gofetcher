@@ -107,15 +107,13 @@ func noRedirect(_ *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Response, error) {
+func (gofetcher *Gofetcher) PrepareRequest(request *Request) (*http.Request, *http.Client, error) {
 	var (
 		err            error
 		httpRequest    *http.Request
-		httpResponse   *http.Response
 		requestTimeout time.Duration = time.Duration(request.timeout) * time.Millisecond
 	)
-	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
-		request.url, request.method, request.timeout, request.headers, attempt)
+
 	httpClient := &http.Client{
 		Transport: gofetcher.Transport,
 		Timeout:   requestTimeout,
@@ -123,9 +121,10 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	if request.followRedirects == false {
 		httpClient.CheckRedirect = noRedirect
 	}
+
 	httpRequest, err = http.NewRequest(request.method, request.url, request.body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for name, value := range request.cookies {
 		httpRequest.AddCookie(&http.Cookie{Name: name, Value: value})
@@ -147,10 +146,22 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 		httpRequest.Header.Set("User-Agent", gofetcher.UserAgent)
 	}
 
+	return httpRequest, httpClient, nil
+}
+
+func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Client, attempt int) (*http.Response, error) {
+	var (
+		httpResponse *http.Response
+		err          error
+	)
+
+	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
+		req.URL.String(), req.Method, client.Timeout, req.Header, attempt)
+
 	resultChan := make(chan responseAndError)
 	started := time.Now()
 	go func() {
-		res, err := httpClient.Do(httpRequest)
+		res, err := client.Do(req)
 		resultChan <- responseAndError{res, err}
 	}()
 	// http connection stay active after timeout exceeded in go <1.3, cause we can't close it using current client api.
@@ -159,8 +170,8 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 	select {
 	case result := <-resultChan:
 		httpResponse, err = result.res, result.err
-	case <-time.After(requestTimeout):
-		err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", requestTimeout.String()))
+	case <-time.After(client.Timeout):
+		err = errors.New(fmt.Sprintf("Request timeout[%s] exceeded", client.Timeout.String()))
 		go func() {
 			// close httpResponse when it ready
 			result := <-resultChan
@@ -169,7 +180,6 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 			}
 		}()
 	}
-	body := []byte{}
 	if err != nil {
 		// special case for redirect failure (returns both response and error)
 		// read more https://code.google.com/p/go/issues/detail?id=3795
@@ -177,27 +187,24 @@ func (gofetcher *Gofetcher) performRequest(request *Request, attempt int) (*Resp
 			if urlError, ok := err.(*url.Error); ok {
 				// golang bug: golang.org/issue/3514
 				if urlError.Err == io.EOF {
-					gofetcher.Logger.Infof("Got EOF error while loading %s, attempt(%d)", request.url, attempt)
+					gofetcher.Logger.Infof("Got EOF error while loading %s, attempt(%d)", req.URL.String(), attempt)
 					if attempt == 1 {
-						return gofetcher.performRequest(request, attempt+1)
+						return gofetcher.ExecuteRequest(req, client, attempt+1)
 					}
 				}
 			}
 			return nil, NewWarn(err)
 		}
-	} else {
-		defer httpResponse.Body.Close()
-		body, err = ioutil.ReadAll(httpResponse.Body)
-		if err != nil {
-			return nil, NewWarn(err)
-		}
 	}
-	runtime := time.Since(started)
+
 	for _, h := range hopHeaders {
 		httpResponse.Header.Del(h)
 	}
-	response := &Response{httpResponse: httpResponse, body: body, header: httpResponse.Header, runtime: runtime}
-	return response, nil
+
+	runtime := time.Since(started)
+	gofetcher.Logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
+		httpResponse.StatusCode, req.URL.String(), runtime))
+	return httpResponse, nil
 
 }
 
@@ -232,7 +239,7 @@ func parseTimeout(rawTimeout interface{}) (timeout int64) {
 	return timeout
 }
 
-func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request) {
+func (gofetcher *Gofetcher) ParseRequest(method string, requestBody []byte) (request *Request) {
 	var (
 		mh              codec.MsgpackHandle
 		h                     = &mh
@@ -287,29 +294,47 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 	return request
 }
 
-func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error) {
-	if err != nil {
-		if _, casted := err.(*WarnError); casted {
-			gofetcher.Logger.Warnf("Error occured: %v, while downloading %s",
-				err.Error(), request.url)
-		} else {
-			gofetcher.Logger.Errf("Error occured: %v, while downloading %s",
-				err.Error(), request.url)
-		}
-		response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
+func (gofetcher *Gofetcher) WriteError(response *cocaine.Response, request *Request, err error) {
+	if _, casted := err.(*WarnError); casted {
+		gofetcher.Logger.Warnf("Error occured: %v, while downloading %s",
+			err.Error(), request.url)
 	} else {
-		response.Write([]interface{}{true, resp.body, resp.httpResponse.StatusCode, resp.header})
-		gofetcher.Logger.Info(fmt.Sprintf("Response code: %d, url: %s, runtime: %v",
-			resp.httpResponse.StatusCode, request.url, resp.runtime))
+		gofetcher.Logger.Errf("Error occured: %v, while downloading %s",
+			err.Error(), request.url)
 	}
+	response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
+}
+
+func (gofetcher *Gofetcher) WriteResponse(response *cocaine.Response, request *Request, resp *http.Response, body []byte) {
+	response.Write([]interface{}{true, body, resp.StatusCode, resp.Header})
 }
 
 func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
 	defer response.Close()
+
 	requestBody := <-request.Read()
-	httpRequest := gofetcher.parseRequest(method, requestBody)
-	resp, err := gofetcher.performRequest(httpRequest, 1)
-	gofetcher.writeResponse(response, httpRequest, resp, err)
+	httpRequest := gofetcher.ParseRequest(method, requestBody)
+
+	req, client, err := gofetcher.PrepareRequest(httpRequest)
+	if client != nil {
+		gofetcher.WriteError(response, httpRequest, err)
+		return
+	}
+
+	resp, err := gofetcher.ExecuteRequest(req, client, 1)
+	if err != nil {
+		gofetcher.WriteError(response, httpRequest, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		gofetcher.WriteError(response, httpRequest, err)
+		return
+	}
+
+	gofetcher.WriteResponse(response, httpRequest, resp, body)
 }
 
 func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
@@ -323,6 +348,7 @@ func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Requ
 func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request) {
 	var (
 		timeout int64 = DefaultTimeout
+		resp    *http.Response
 	)
 	url := req.FormValue("url")
 	timeoutArg := req.FormValue("timeout")
@@ -330,9 +356,13 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 		tout, _ := strconv.Atoi(timeoutArg)
 		timeout = int64(tout)
 	}
-	httpRequest := Request{method: req.Method, url: url, timeout: timeout,
+	httpRequest := &Request{method: req.Method, url: url, timeout: timeout,
 		followRedirects: DefaultFollowRedirects, headers: req.Header, body: req.Body}
-	resp, err := gofetcher.performRequest(&httpRequest, 1)
+	prepReq, prepClient, err := gofetcher.PrepareRequest(httpRequest)
+	if err == nil {
+		resp, err = gofetcher.ExecuteRequest(prepReq, prepClient, 1)
+	}
+
 	if err != nil {
 		res.Header().Set("Content-Type", "text/html")
 		res.WriteHeader(500)
@@ -344,13 +374,13 @@ func (gofetcher *Gofetcher) HttpProxy(res http.ResponseWriter, req *http.Request
 		}
 
 	} else {
-		for key, values := range resp.header {
+		for key, values := range resp.Header {
 			for _, value := range values {
 				res.Header().Add(key, value)
 			}
 		}
 		res.WriteHeader(200)
-		if _, err := res.Write(resp.body); err != nil {
+		if _, err := io.Copy(res, resp.Body); err != nil {
 			gofetcher.Logger.Errf("Error: %v", err)
 		}
 	}
