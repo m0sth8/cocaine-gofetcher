@@ -48,7 +48,8 @@ func NewWarn(err error) *WarnError {
 }
 
 type Gofetcher struct {
-	Logger    *cocaine.Logger
+	// It's an interface now
+	Logger    cocaine.Logger
 	Transport http.RoundTripper
 
 	UserAgent string
@@ -253,13 +254,15 @@ func parseTimeout(rawTimeout interface{}) (timeout int64) {
 
 func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (request *Request) {
 	var (
-		mh              codec.MsgpackHandle
-		h               = &mh
-		timeout         DefaultTimeout
-		cookies         Cookies
-		headers         = make(http.Header)
-		followRedirects DefaultFollowRedirects
-		body            *bytes.Buffer
+		mh codec.MsgpackHandle
+		h  = &mh
+
+		body    *bytes.Buffer
+		cookies Cookies
+
+		timeout         int64 = DefaultTimeout
+		headers               = make(http.Header)
+		followRedirects bool  = DefaultFollowRedirects
 	)
 
 	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
@@ -317,7 +320,7 @@ func (gofetcher *Gofetcher) parseRequest(method string, requestBody []byte) (req
 	return request
 }
 
-func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *Request, resp *Response, err error) {
+func (gofetcher *Gofetcher) writeResponse(response cocaine.Response, request *Request, resp *Response, err error) {
 	if err != nil {
 		if _, casted := err.(*WarnError); casted {
 			gofetcher.Logger.Warnf("Error occured: %v, while downloading %s",
@@ -334,7 +337,7 @@ func (gofetcher *Gofetcher) writeResponse(response *cocaine.Response, request *R
 	}
 }
 
-func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
+func (gofetcher *Gofetcher) handler(method string, request cocaine.Request, response cocaine.Response) {
 	defer response.Close()
 	requestBody := <-request.Read()
 	httpRequest := gofetcher.parseRequest(method, requestBody)
@@ -342,8 +345,8 @@ func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, res
 	gofetcher.writeResponse(response, httpRequest, resp, err)
 }
 
-func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
-	return func(request *cocaine.Request, response *cocaine.Response) {
+func (gofetcher *Gofetcher) GetHandler(method string) func(request cocaine.Request, response cocaine.Response) {
+	return func(request cocaine.Request, response cocaine.Response) {
 		gofetcher.handler(method, request, response)
 	}
 }
