@@ -155,7 +155,7 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 		err          error
 	)
 
-	gofetcher.Logger.Infof("Requested url: %s, Method: %s, timeout: %d, headers: %v, attempt: %d",
+	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
 		req.URL.String(), req.Method, client.Timeout, req.Header, attempt)
 
 	resultChan := make(chan responseAndError)
@@ -309,11 +309,11 @@ func (gofetcher *Gofetcher) WriteResponse(response *cocaine.Response, request *R
 	response.Write([]interface{}{true, body, resp.StatusCode, resp.Header})
 }
 
-func (gofetcher *Gofetcher) handler(Method string, request *cocaine.Request, response *cocaine.Response) {
+func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
 	defer response.Close()
 
 	requestBody := <-request.Read()
-	httpRequest := gofetcher.ParseRequest(Method, requestBody)
+	httpRequest := gofetcher.ParseRequest(method, requestBody)
 
 	req, client, err := gofetcher.PrepareRequest(httpRequest)
 	if client != nil {
@@ -337,9 +337,9 @@ func (gofetcher *Gofetcher) handler(Method string, request *cocaine.Request, res
 	gofetcher.WriteResponse(response, httpRequest, resp, body)
 }
 
-func (gofetcher *Gofetcher) GetHandler(Method string) func(request *cocaine.Request, response *cocaine.Response) {
+func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
 	return func(request *cocaine.Request, response *cocaine.Response) {
-		gofetcher.handler(Method, request, response)
+		gofetcher.handler(method, request, response)
 	}
 }
 
