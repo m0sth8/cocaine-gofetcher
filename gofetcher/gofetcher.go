@@ -89,6 +89,7 @@ func NewGofetcher() *Gofetcher {
 		Dial: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: KeepAliveTimeout * time.Second,
+			DualStack: true,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
