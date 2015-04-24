@@ -317,7 +317,7 @@ func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, res
 	httpRequest := gofetcher.ParseRequest(method, requestBody)
 
 	req, client, err := gofetcher.PrepareRequest(httpRequest)
-	if client != nil {
+	if err != nil {
 		gofetcher.WriteError(response, httpRequest, err)
 		return
 	}
