@@ -400,7 +400,7 @@ func (gofetcher *Gofetcher) HttpEcho(res http.ResponseWriter, req *http.Request)
 
 func isRedirect(statusCode int) bool {
 	switch statusCode {
-		case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect:
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect:
 		return true
 	}
 	return false
