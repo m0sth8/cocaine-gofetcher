@@ -331,8 +331,11 @@ func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, res
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		gofetcher.WriteError(response, httpRequest, err)
-		return
+		// body may be closed on redirect in http::client.go::doFollowingRedirects()
+		if !isRedirect(resp.StatusCode) {
+			gofetcher.WriteError(response, httpRequest, err)
+			return
+		}
 	}
 
 	gofetcher.WriteResponse(response, httpRequest, resp, body)
@@ -393,4 +396,12 @@ func (gofetcher *Gofetcher) HttpEcho(res http.ResponseWriter, req *http.Request)
 	res.Header().Set("Content-Type", "text/html")
 	res.WriteHeader(200)
 	res.Write([]byte(text))
+}
+
+func isRedirect(statusCode int) bool {
+	switch statusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect:
+		return true
+	}
+	return false
 }
