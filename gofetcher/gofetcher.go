@@ -203,7 +203,11 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 			// special case for redirect failure (returns both response and error)
 			// read more https://code.google.com/p/go/issues/detail?id=3795
 			if urlError, ok := err.(*url.Error); ok {
-				if _, ok := urlError.Err.(noRedirectError); !ok {
+				if _, ok := urlError.Err.(noRedirectError); ok {
+					// when redirect is cancelled response body is closed
+					// so put there stub body to not break our clients
+					req.Body = ioutil.NopCloser(bytes.NewBuffer(nil))
+				} else {
 					// http client failed to redirect and this is not because we requested it to
 					// usually it means that server sent response with redirect status code but omitted "Location" header
 					return nil, NewWarn(err)
