@@ -188,8 +188,6 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 		}()
 	}
 	if err != nil {
-		// special case for redirect failure (returns both response and error)
-		// read more https://code.google.com/p/go/issues/detail?id=3795
 		if httpResponse == nil {
 			if urlError, ok := err.(*url.Error); ok {
 				// golang bug: golang.org/issue/3514
@@ -201,12 +199,16 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 				}
 			}
 			return nil, NewWarn(err)
-		}
-
-		if _, ok := err.(noRedirectError); !ok {
-			// http client failed to redirect and this is not because we requested it to
-			// usually it means that server sent response with redirect status code but omitted "Location" header
-			return nil, NewWarn(err)
+		} else {
+			// special case for redirect failure (returns both response and error)
+			// read more https://code.google.com/p/go/issues/detail?id=3795
+			if urlError, ok := err.(*url.Error); ok {
+				if _, ok := urlError.Err.(noRedirectError); !ok {
+					// http client failed to redirect and this is not because we requested it to
+					// usually it means that server sent response with redirect status code but omitted "Location" header
+					return nil, NewWarn(err)
+				}
+			}
 		}
 	}
 
