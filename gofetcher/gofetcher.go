@@ -101,9 +101,15 @@ func (gofetcher *Gofetcher) SetUserAgent(userAgent string) {
 	gofetcher.UserAgent = userAgent
 }
 
+type noRedirectError struct{}
+
+func (nr noRedirectError) Error() string {
+	return "stopped after first redirect"
+}
+
 func noRedirect(_ *http.Request, via []*http.Request) error {
 	if len(via) > 0 {
-		return errors.New("stopped after first redirect")
+		return noRedirectError{}
 	}
 	return nil
 }
@@ -182,8 +188,6 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 		}()
 	}
 	if err != nil {
-		// special case for redirect failure (returns both response and error)
-		// read more https://code.google.com/p/go/issues/detail?id=3795
 		if httpResponse == nil {
 			if urlError, ok := err.(*url.Error); ok {
 				// golang bug: golang.org/issue/3514
@@ -195,6 +199,20 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 				}
 			}
 			return nil, NewWarn(err)
+		} else {
+			// special case for redirect failure (returns both response and error)
+			// read more https://code.google.com/p/go/issues/detail?id=3795
+			if urlError, ok := err.(*url.Error); ok {
+				if _, ok := urlError.Err.(noRedirectError); ok {
+					// when redirect is cancelled response body is closed
+					// so put there stub body to not break our clients
+					httpResponse.Body = ioutil.NopCloser(bytes.NewBuffer(nil))
+				} else {
+					// http client failed to redirect and this is not because we requested it to
+					// usually it means that server sent response with redirect status code but omitted "Location" header
+					return nil, NewWarn(err)
+				}
+			}
 		}
 	}
 
