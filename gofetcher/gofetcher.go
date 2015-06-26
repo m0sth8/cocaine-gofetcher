@@ -101,9 +101,15 @@ func (gofetcher *Gofetcher) SetUserAgent(userAgent string) {
 	gofetcher.UserAgent = userAgent
 }
 
+type noRedirectError struct{}
+
+func (nr noRedirectError) Error() string {
+	return "stopped after first redirect"
+}
+
 func noRedirect(_ *http.Request, via []*http.Request) error {
 	if len(via) > 0 {
-		return errors.New("stopped after first redirect")
+		return noRedirectError{}
 	}
 	return nil
 }
@@ -194,6 +200,12 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 					}
 				}
 			}
+			return nil, NewWarn(err)
+		}
+
+		if _, ok := err.(noRedirectError); !ok {
+			// http client failed to redirect and this is not because we requested it to
+			// usually it means that server sent response with redirect status code but omitted "Location" header
 			return nil, NewWarn(err)
 		}
 	}
