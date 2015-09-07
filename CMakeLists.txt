@@ -1,0 +1,52 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.2)
+PROJECT(gofetcher)
+
+SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+INCLUDE(FindGo)
+
+GoProjectConfigure(
+    PKGNAME github.com/m0sth8/cocaine-gofetcher
+    DEPENDS 
+        github.com/ugorji/go/codec
+        github.com/cocaine/cocaine-framework-go/cocaine
+)
+
+IF(NOT CMAKE_BUILD_TYPE MATCHES "ReleaseWithDebInfo")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wall -Wextra -pthread -std=c++14 -Wl,--no-as-needed")
+ELSE()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -W -Wall -Wextra -pthread -std=c++14 -Wl,--no-as-needed")
+ENDIF()
+
+MACRO(LOCATE_PATH VARIABLE FILE_NAME)
+    IF(${VARIABLE}_TMP AND ${VARIABLE}_PATH)
+        RETURN()
+    ENDIF()
+     
+    FIND_PATH(${VARIABLE}_TMP NAMES ${FILE_NAME})
+     
+    IF(${VARIABLE}_TMP)
+        SET(${VARIABLE}_PATH ${${VARIABLE}_TMP}/${FILE_NAME})
+        MESSAGE(STATUS "${FILE_NAME} at: ${${VARIABLE}_PATH}")
+    ELSE()
+        MESSAGE(FATAL_ERROR "${FILE_NAME} not found.")
+    ENDIF()
+ENDMACRO()
+
+ENABLE_TESTING()
+GoBuild(
+    TARGET app 
+    PACKAGE github.com/m0sth8/cocaine-gofetcher/cmd/gofetcher
+)
+#GoTest(
+#    PACKAGES github.com/m0sth8/cocaine-gofetcher/test
+#)
+
+INSTALL(
+    PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}
+    DESTINATION bin COMPONENT runtime
+)
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/app/gofetcher/cocaine.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/cocaine.cmake)
+IF(NOT CMAKE_BUILD_TYPE MATCHES "ReleaseWithDebInfo")
+    INSTALL(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/cocaine.cmake)
+ENDIF()
