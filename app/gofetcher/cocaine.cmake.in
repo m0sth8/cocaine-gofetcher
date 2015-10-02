@@ -9,4 +9,4 @@ EXECUTE_PROCESS(COMMAND cp -f ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME} /var/s
 EXECUTE_PROCESS(COMMAND sed -r "s/PROJECT_NAME/${PROJECT_NAME}/g" ${CMAKE_CURRENT_SOURCE_DIR}/app/gofetcher/manifest.json.in OUTPUT_FILE manifest.json WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 EXECUTE_PROCESS(COMMAND cocaine-tool app upload --name ${PROJECT_NAME} --package ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.tar.gz --manifest ${CMAKE_CURRENT_BINARY_DIR}/manifest.json)
 EXECUTE_PROCESS(COMMAND cocaine-tool app start --name ${PROJECT_NAME} --profile default)
-#EXECUTE_PROCESS(COMMAND cocaine-tool call ${PROJECT_NAME} enqueue "\"ping\", \"\"" --timeout 9999)
+EXECUTE_PROCESS(COMMAND cocaine-tool call ${PROJECT_NAME} enqueue "\"ping\", \"\"" --timeout 9999)
