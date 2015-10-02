@@ -2,7 +2,7 @@ Source: gofetcher
 Section: mail
 Priority: optional
 Maintainer: Vitaly Isaev <isaev@corp.sputnik.ru>
-Build-Depends: debhelper (>= 9), dh-golang, cmake
+Build-Depends: debhelper (>= 9), dh-golang, cmake, mailpaas-schema-dev
 Standards-Version: 3.9.5
 # Homepage: https://wiki.amalama.ru/display/Comservices/MailAPI
 # Vcs-Git: http://gitlab.srv.pv.km/mailpaas/MailAPI.git
