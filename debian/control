@@ -1,0 +1,24 @@
+Source: gofetcher
+Section: mail
+Priority: optional
+Maintainer: Vitaly Isaev <isaev@corp.sputnik.ru>
+Build-Depends: debhelper (>= 9), dh-golang, cmake
+Standards-Version: 3.9.5
+# Homepage: https://wiki.amalama.ru/display/Comservices/MailAPI
+# Vcs-Git: http://gitlab.srv.pv.km/mailpaas/MailAPI.git
+# Vcs-Browser: http://gitlab.srv.pv.km/mailpaas/MailAPI
+
+Package: gofetcher
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: {Short }
+ {Short }
+
+Package: gofetcher-dbg
+Section: debug
+Priority: extra
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+     gofetcher (= ${binary:Version}),
+Description: {Long }
+ {Long }
