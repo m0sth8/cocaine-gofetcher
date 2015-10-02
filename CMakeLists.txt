@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.2)
-PROJECT(gofetcher_app)
+PROJECT(gofetcher)
 
 MACRO(LOCATE_PATH VARIABLE FILE_NAME)
     IF(${VARIABLE}_TMP AND ${VARIABLE}_PATH)
@@ -31,7 +31,7 @@ ELSE()
 ENDIF()
 
 ENABLE_TESTING()
-GoBuild(
+GoInstall(
     TARGET app 
     PACKAGE github.com/m0sth8/cocaine-gofetcher/cmd/gofetcher
 )
@@ -40,7 +40,7 @@ GoBuild(
 #)
 
 INSTALL(
-    PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}
+    PROGRAMS ${CMAKE_BINARY_DIR}/gopath/bin/${PROJECT_NAME}
     DESTINATION bin COMPONENT runtime
 )
 
