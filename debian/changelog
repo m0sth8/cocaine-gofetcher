@@ -1,3 +1,9 @@
+gofetcher (0.1.0ubuntu4) utopic; urgency=medium
+
+  * Manifest for testing stand
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Fri, 02 Oct 2015 19:12:12 +0300
+
 gofetcher (0.1.0ubuntu3) utopic; urgency=medium
 
   * Update control
