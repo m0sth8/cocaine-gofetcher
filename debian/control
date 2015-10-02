@@ -19,6 +19,6 @@ Section: debug
 Priority: extra
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
-     gofetcher (= ${binary:Version}),
+      gofetcher (= ${binary:Version}),
 Description: {Long }
  {Long }
