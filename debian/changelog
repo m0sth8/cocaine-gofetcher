@@ -1,3 +1,9 @@
+gofetcher (0.1.0ubuntu7) utopic; urgency=medium
+
+  * Version bump for Jenkins test
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Mon, 05 Oct 2015 16:10:13 +0300
+
 gofetcher (0.1.0ubuntu6) utopic; urgency=medium
 
   * Version bump for Jenkins test
