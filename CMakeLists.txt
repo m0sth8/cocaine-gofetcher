@@ -58,7 +58,7 @@ install(
   PATTERN "*.hpp")
 
 ENABLE_TESTING()
-GoBuild(
+GoInstall(
     TARGET app 
     PACKAGE github.com/m0sth8/cocaine-gofetcher/cmd/gofetcher
 )
@@ -67,7 +67,7 @@ GoBuild(
 #)
 
 INSTALL(
-    PROGRAMS ${CMAKE_BINARY_DIR}/${PROJECT_NAME}
+    PROGRAMS ${CMAKE_BINARY_DIR}/gopath/bin/${PROJECT_NAME}
     DESTINATION bin COMPONENT runtime
 )
 
