@@ -1,0 +1,21 @@
+{
+    "method": {
+        "method_name": "head",
+        "dependencies": [],
+        "app_name": "gofetcher",
+        "namespace": "Gofetcher::Head",
+        "request_params": [
+            ["std::string", "url", {"required": true}],
+            ["autojsoncxx::utility::int64_t", "timeout"],
+            ["std::map<std::string, std::string>", "cookies"],
+            ["std::map<std::string, std::string>", "headers"],
+            ["bool", "follow_redirects"]
+        ],
+        "result_body": [
+            ["bool", "done", {"default": false}],
+            ["std::vector<unsigned char>", "body"],
+            ["autojsoncxx::utility::int64_t", "status_code"],
+            ["std::map<std::string, std::vector<std::string> >", "headers"]
+        ]
+    }
+}
