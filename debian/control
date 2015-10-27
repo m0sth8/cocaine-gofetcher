@@ -14,6 +14,13 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: {Short }
  {Short }
 
+Package: gofetcher-dev
+Section: libdevel
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, gofetcher (= ${binary:Version})
+Description: {Short description}
+ {Long description}
+
 Package: gofetcher-dbg
 Section: debug
 Priority: extra

@@ -30,6 +30,33 @@ ELSE()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -W -Wall -Wextra -pthread -std=c++14 -Wl,--no-as-needed")
 ENDIF()
 
+set(SPEC_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen/specs)
+LOCATE_PATH(AUTOJSONCXX_TEMPLATE share/autojsoncxx/code_template)
+LOCATE_PATH(STRUCT_TEMPLATE share/sputnik/schema/struct_template)
+LOCATE_PATH(AUTOJSONCXX_GENERATOR autojsoncxx.py)
+LOCATE_PATH(STUBS_GENERATOR_CMAKE share/sputnik/schema/cmake/generate_stubs.cmake)
+LOCATE_PATH(TYPE_TRAITS_CODE_TEMPLATE share/sputnik/schema/type_traits_code_template)
+LOCATE_PATH(SCHEMA_CODE_TEMPLATE share/sputnik/schema/schema_code_template)
+LOCATE_PATH(SCHEMA_GENERATOR json_meta_generator.py)
+INCLUDE(${STUBS_GENERATOR_CMAKE_PATH})
+
+GenerateExternalStubs(
+                ${CMAKE_CURRENT_SOURCE_DIR}/methods
+                ${SPEC_INCLUDE_DIR}
+                ${STRUCT_TEMPLATE_PATH}
+                ${AUTOJSONCXX_GENERATOR_PATH}
+                ${SCHEMA_GENERATOR_PATH}
+                ${SCHEMA_CODE_TEMPLATE_PATH}
+                ${TYPE_TRAITS_CODE_TEMPLATE_PATH}
+)
+
+install(
+  DIRECTORY ${SPEC_INCLUDE_DIR}/
+  COMPONENT development
+  DESTINATION include/sputnik/gofetcher/
+  FILES_MATCHING
+  PATTERN "*.hpp")
+
 ENABLE_TESTING()
 GoInstall(
     TARGET app 
