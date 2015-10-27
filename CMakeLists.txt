@@ -53,7 +53,7 @@ GenerateExternalStubs(
 install(
   DIRECTORY ${SPEC_INCLUDE_DIR}/
   COMPONENT development
-  DESTINATION include/sputnik/third_party/gofetcher/
+  DESTINATION include/sputnik/gofetcher/
   FILES_MATCHING
   PATTERN "*.hpp")
 
