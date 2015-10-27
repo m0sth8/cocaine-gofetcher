@@ -21,6 +21,7 @@ const (
 	DefaultTimeout         = 5000
 	DefaultFollowRedirects = true
 	KeepAliveTimeout       = 30
+	PanicResponseErrorCode = 1
 )
 
 // took from httputil/reverseproxy.go
@@ -329,7 +330,19 @@ func (gofetcher *Gofetcher) WriteResponse(response *cocaine.Response, request *R
 }
 
 func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
-	defer response.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			var errMsg string
+			if err := r.(*error); err == nil {
+				errMsg = "Unknown error has occured."
+			} else {
+				errMsg = (*err).Error()
+			}
+			gofetcher.Logger.Errf("Error occured: %s.", errMsg)
+			response.ErrorMsg(PanicResponseErrorCode, errMsg)
+		}
+		response.Close()
+	}()
 
 	requestBody := <-request.Read()
 	httpRequest := gofetcher.ParseRequest(method, requestBody)
