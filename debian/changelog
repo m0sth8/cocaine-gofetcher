@@ -1,3 +1,14 @@
+gofetcher (0.1.0ubuntu8) utopic; urgency=medium
+
+  * Добавлены описания методов
+  * Откат лишних изменений
+  * Исправлена папка инсталляции хидеров
+  * Добавлено создание пакета с хидерами
+  * Добавлен метод post
+  * Добавлены спеки на методы delete, put, patch
+
+ -- rtarasov <autobuilder@corp.sputnik.ru>  Tue, 27 Oct 2015 17:48:31 +0300
+
 gofetcher (0.1.0ubuntu7) utopic; urgency=medium
 
   * Version bump for Jenkins test
