@@ -1,0 +1,22 @@
+{
+    "method": {
+        "method_name": "patch",
+        "dependencies": [],
+        "app_name": "gofetcher",
+        "namespace": "Gofetcher::Patch",
+        "request_params": [
+            ["std::string", "url", {"required": true}],
+            ["std::vector<char>", "body"],
+            ["autojsoncxx::utility::int64_t", "timeout"],
+            ["std::map<std::string, std::string>", "cookies"],
+            ["std::map<std::string, std::vector<std::string> >", "headers"],
+            ["bool", "follow_redirects"]
+        ],
+        "result_body": [
+            ["bool", "done", {"default": false, "required": true}],
+            ["std::vector<char>", "body", {"required": true}],
+            ["autojsoncxx::utility::int64_t", "status_code", {"required": true}],
+            ["std::map<std::string, std::vector<std::string> >", "headers", {"required": true}]
+        ]
+    }
+}

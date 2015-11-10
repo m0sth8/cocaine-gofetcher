@@ -1,0 +1,19 @@
+package version
+
+import "fmt"
+
+type AppVersion struct {
+  Major int64
+  Minor int64
+  Patch int64
+  Build int64
+}
+
+func GetVersion()(AppVersion) {
+  return AppVersion{Major: ${APP_VERSION_MAJOR}, Minor: ${APP_VERSION_MINOR}, Patch: ${APP_VERSION_PATCH}, Build: ${APP_VERSION_BUILD}  }
+}
+
+func GetAppVersion()(string) {
+  version := GetVersion()
+  return fmt.Sprintf("%d.%d.%d.%d", version.Major, version.Minor, version.Patch, version.Build)
+}

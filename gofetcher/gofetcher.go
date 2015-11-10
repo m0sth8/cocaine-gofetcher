@@ -9,12 +9,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"time"
-
+	"github.com/cocaine/cocaine-framework-go/vendor/src/github.com/ugorji/go/codec"
 	"github.com/cocaine/cocaine-framework-go/cocaine"
-	"github.com/ugorji/go/codec"
+	"github.com/m0sth8/cocaine-gofetcher/gogen/gofetcher"
+	"github.com/m0sth8/cocaine-gofetcher/gogen/gofetcher/get"
+	"github.com/m0sth8/cocaine-gofetcher/gogen/gofetcher/post"
+	"github.com/m0sth8/cocaine-gofetcher/app/common"
 )
 
 const (
@@ -36,6 +38,11 @@ var hopHeaders = []string{
 	"Transfer-Encoding",
 	"Upgrade",
 }
+
+var (
+	mh codec.MsgpackHandle
+	h  = &mh
+)
 
 type WarnError struct {
 	err error
@@ -78,12 +85,13 @@ type Response struct {
 	runtime      time.Duration
 }
 
-func NewGofetcher() *Gofetcher {
+func NewGofetcher(appVersion string) *Gofetcher {
 	logger, err := cocaine.NewLogger()
 	if err != nil {
 		fmt.Printf("Could not initialize logger due to error: %v", err)
 		return nil
 	}
+	logger.Debugf(" ********************** Gofetcher with version '" + appVersion + "'")
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
@@ -162,8 +170,8 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 		err          error
 	)
 
-	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d",
-		req.URL.String(), req.Method, client.Timeout, req.Header, attempt)
+	gofetcher.Logger.Infof("Requested url: %s, method: %s, timeout: %d, headers: %v, attempt: %d, body: %v",
+		req.URL.String(), req.Method, client.Timeout, req.Header, attempt, req.Body)
 
 	resultChan := make(chan responseAndError)
 	started := time.Now()
@@ -227,18 +235,6 @@ func (gofetcher *Gofetcher) ExecuteRequest(req *http.Request, client *http.Clien
 
 }
 
-// Normal methods
-
-func parseHeaders(rawHeaders map[string]interface{}) http.Header {
-	headers := make(http.Header)
-	for name, values := range rawHeaders {
-		for _, value := range values.([]interface{}) {
-			headers.Add(name, string(value.([]uint8))) // to transform in canonical form
-		}
-	}
-	return headers
-}
-
 func parseCookies(rawCookie map[string]interface{}) Cookies {
 	cookies := Cookies{}
 	for key, value := range rawCookie {
@@ -258,7 +254,7 @@ func parseTimeout(rawTimeout interface{}) (timeout int64) {
 	return timeout
 }
 
-func (gofetcher *Gofetcher) ParseRequest(method string, requestBody []byte) (request *Request) {
+/*func (gofetcher *Gofetcher) ParseRequest(method string, requestBody []byte) (request *Request) {
 	var (
 		mh              codec.MsgpackHandle
 		h                     = &mh
@@ -311,9 +307,52 @@ func (gofetcher *Gofetcher) ParseRequest(method string, requestBody []byte) (req
 		request.Body = body
 	}
 	return request
+}*/
+
+func unpack(buf []byte, unpacked interface{}) error {
+	return codec.NewDecoderBytes(buf, h).Decode(unpacked)
 }
 
-func (gofetcher *Gofetcher) WriteError(response *cocaine.Response, request *Request, err error) {
+
+func (gofetcher *Gofetcher) parseGetRequest(requestBuffer []byte) (get.RequestBundle, get.ResponseBundle) {
+	var msg get.RequestBundle
+	err := unpack(requestBuffer, &msg)
+	if err == nil {
+		reply := get.NewResponse(msg.Request.Id)
+		reply.Response.ResponseResult.Error.Code = common.UnknownError
+		reply.Response.ResponseResult.Error.Message = "Unknown error"
+		reply.Response.ResponseResult.ResponseBody.Headers = make(map[string][]string)
+		return msg, reply
+	} else {
+		gofetcher.Logger.Errf("on get: failed to parse request %v", err)
+		reply := get.NewResponse("")
+		reply.Response.ResponseResult.Error.Code = common.RequestParseError
+		reply.Response.ResponseResult.Error.Message = fmt.Sprintf("Failed to parse get-request: %v", err)
+		reply.Response.ResponseResult.ResponseBody.Headers = make(map[string][]string)
+		return msg, reply
+	}
+}
+
+func (gofetcher *Gofetcher) parsePostRequest(requestBuffer []byte) (post.RequestBundle, post.ResponseBundle) {
+	var msg post.RequestBundle
+	err := unpack(requestBuffer, &msg)
+	if err == nil {
+		reply := post.NewResponse(msg.Request.Id)
+		reply.Response.ResponseResult.Error.Code = common.UnknownError
+		reply.Response.ResponseResult.Error.Message = "Unknown error"
+		reply.Response.ResponseResult.ResponseBody.Headers = make(map[string][]string)
+		return msg, reply
+	} else {
+		gofetcher.Logger.Errf("on post: failed to parse request %v", err)
+		reply := post.NewResponse("")
+		reply.Response.ResponseResult.Error.Code = common.RequestParseError
+		reply.Response.ResponseResult.Error.Message = fmt.Sprintf("Failed to parse post-request: %v", err)
+		reply.Response.ResponseResult.ResponseBody.Headers = make(map[string][]string)
+		return msg, reply
+	}
+}
+
+func (gofetcher *Gofetcher) logError(request *Request, err error) {
 	if _, casted := err.(*WarnError); casted {
 		gofetcher.Logger.Warnf("Error occured: %v, while downloading %s",
 			err.Error(), request.URL)
@@ -321,44 +360,182 @@ func (gofetcher *Gofetcher) WriteError(response *cocaine.Response, request *Requ
 		gofetcher.Logger.Errf("Error occured: %v, while downloading %s",
 			err.Error(), request.URL)
 	}
-	response.Write([]interface{}{false, err.Error(), 0, http.Header{}})
 }
 
-func (gofetcher *Gofetcher) WriteResponse(response *cocaine.Response, request *Request, resp *http.Response, body []byte) {
-	response.Write([]interface{}{true, body, resp.StatusCode, resp.Header})
-}
+type HandlerArgumentsFactory func (requestBuffer []byte, response *cocaine.Response)(request *Request, defereFunc func()(), setError func(code int, message string)(), setResult func(resp *http.Response, body []byte)())
 
-func (gofetcher *Gofetcher) handler(method string, request *cocaine.Request, response *cocaine.Response) {
-	defer response.Close()
+func (gof *Gofetcher) handler(argumentsFactory HandlerArgumentsFactory, request *cocaine.Request, response *cocaine.Response) {
+	requestBuffer := <-request.Read()
+	httpRequest, defereFunc, setError, setResult := argumentsFactory(requestBuffer, response)
+	/*func (requestBuffer []byte, response *cocaine.Response)(request *Request, defereFunc func()(), setError func(code int, message string)(), setResult func(resp *http.Response, body []byte)()) {
+		//gofetcher.logger
+		msg, reply := gof.parseGetRequest(requestBuffer)
+		request = &Request{Method: "GET", URL: msg.Request.Params.Url, Timeout: msg.Request.Params.Timeout,
+			FollowRedirects: msg.Request.Params.FollowRedirects,
+			Cookies:         Cookies{}, Headers: make(http.Header)}
+		defereFunc = func() {
+			if r := recover(); r != nil {
+				gof.Logger.Debugf("on_grab_avatar: recovered from: %v.", r)
+				reply.Response.ResponseResult.Error.Code = common.UnknownError
+				reply.Response.ResponseResult.Error.Message = "Unknown error"
+				response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+			} else {
+				if reply.Response.ResponseResult.Error.Code == common.Ok {
+					gof.Logger.Debug("on get: OK, writing response.")
+					response.Write(&reply)
+				} else {
+					gof.Logger.Debug("on get: NOT OK, sending error.")
+					response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+				}
+			}
+			gof.Logger.Debugf("on get: RESULT MESSAGE: %s.", reply.Response.ResponseResult.Error.Message)
+			gof.Logger.Debug("on get: Closing response.")
+			response.Close()
+		}
+		setError = func(code int, message string) {
+			reply.Response.ResponseResult.Error.Code = code
+			reply.Response.ResponseResult.Error.Message = message
+		}
 
-	requestBody := <-request.Read()
-	httpRequest := gofetcher.ParseRequest(method, requestBody)
+		setResult = func(resp *http.Response, body []byte) {
+			reply.Response.ResponseResult.ResponseBody.Done = true
+			reply.Response.ResponseResult.ResponseBody.StatusCode = int64(resp.StatusCode)
+			reply.Response.ResponseResult.ResponseBody.Body = body
+		}
+		return request, defereFunc, setError, setResult
+	}(requestBuffer, response)*/
+	//msg, reply := gofetcher.parseRequest(requestBuffer)
 
-	req, client, err := gofetcher.PrepareRequest(httpRequest)
+	defer defereFunc()
+
+	req, client, err := gof.PrepareRequest(httpRequest)
 	if err != nil {
-		gofetcher.WriteError(response, httpRequest, err)
+		setError(1001, "Failed to prepare request")
+		gof.logError(httpRequest, err)
 		return
 	}
 
-	resp, err := gofetcher.ExecuteRequest(req, client, 1)
+	resp, err := gof.ExecuteRequest(req, client, 1)
 	if err != nil {
-		gofetcher.WriteError(response, httpRequest, err)
+		setError(1002, "Request failed")
+		gof.logError(httpRequest, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		gofetcher.WriteError(response, httpRequest, err)
+		setError(1003, "Failed to get body from response")
+		gof.logError(httpRequest, err)
 		return
 	}
+	gof.Logger.Debug("on get: DONE, Setting OK.")
+	setError(common.Ok, "Succeeded")
 
-	gofetcher.WriteResponse(response, httpRequest, resp, body)
+	setResult(resp, body)
 }
 
-func (gofetcher *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
+func (gof *Gofetcher) GetHandler(method string) func(request *cocaine.Request, response *cocaine.Response) {
+	var argumentsFactory HandlerArgumentsFactory
+
+	switch method {
+		case "GET": {
+			argumentsFactory = func (requestBuffer []byte, response *cocaine.Response)(request *Request, defereFunc func()(), setError func(code int, message string)(), setResult func(resp *http.Response, body []byte)()) {
+				//gofetcher.logger
+				msg, reply := gof.parseGetRequest(requestBuffer)
+				var headers http.Header
+				if msg.Request.Params.Headers == nil {
+					headers = make(http.Header)
+				} else {
+					headers = msg.Request.Params.Headers
+				}
+				request = &Request{Method: "GET", URL: msg.Request.Params.Url, Timeout: msg.Request.Params.Timeout,
+					FollowRedirects: msg.Request.Params.FollowRedirects,
+					Cookies:         Cookies{}, Headers: headers}
+				defereFunc = func() {
+					if r := recover(); r != nil {
+						gof.Logger.Debugf("on get: recovered from: %v.", r)
+						reply.Response.ResponseResult.Error.Code = common.UnknownError
+						reply.Response.ResponseResult.Error.Message = "Unknown error"
+						response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+					} else {
+						if reply.Response.ResponseResult.Error.Code == common.Ok {
+							gof.Logger.Debug("on get: OK, writing response.")
+							response.Write(&reply)
+						} else {
+							gof.Logger.Debug("on get: NOT OK, sending error.")
+							response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+						}
+					}
+					gof.Logger.Debugf("on get: RESULT MESSAGE: %s.", reply.Response.ResponseResult.Error.Message)
+					gof.Logger.Debug("on get: Closing response.")
+					response.Close()
+				}
+				setError = func(code int, message string) {
+					reply.Response.ResponseResult.Error.Code = code
+					reply.Response.ResponseResult.Error.Message = message
+				}
+
+				setResult = func(resp *http.Response, body []byte) {
+					reply.Response.ResponseResult.ResponseBody.Done = true
+					reply.Response.ResponseResult.ResponseBody.StatusCode = int64(resp.StatusCode)
+					reply.Response.ResponseResult.ResponseBody.Body = body
+				}
+				return request, defereFunc, setError, setResult
+			}
+		}
+	case "POST": {
+		argumentsFactory = func (requestBuffer []byte, response *cocaine.Response)(request *Request, defereFunc func()(), setError func(code int, message string)(), setResult func(resp *http.Response, body []byte)()) {
+			//gofetcher.logger
+			msg, reply := gof.parsePostRequest(requestBuffer)
+			var headers http.Header
+			if msg.Request.Params.Headers == nil {
+				headers = make(http.Header)
+			} else {
+				headers = msg.Request.Params.Headers
+			}
+			request = &Request{Method: "POST", URL: msg.Request.Params.Url, Timeout: msg.Request.Params.Timeout,
+				FollowRedirects: msg.Request.Params.FollowRedirects,
+				Cookies:         Cookies{}, Headers: headers}
+			if msg.Request.Params.Body != nil {
+				request.Body = bytes.NewBuffer(msg.Request.Params.Body)
+			}
+			defereFunc = func() {
+				if r := recover(); r != nil {
+					gof.Logger.Debugf("on post: recovered from: %v.", r)
+					reply.Response.ResponseResult.Error.Code = common.UnknownError
+					reply.Response.ResponseResult.Error.Message = "Unknown error"
+					response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+				} else {
+					if reply.Response.ResponseResult.Error.Code == common.Ok {
+						gof.Logger.Debug("on post: OK, writing response.")
+						response.Write(&reply)
+					} else {
+						gof.Logger.Debug("on post: NOT OK, sending error.")
+						response.ErrorMsg(gofetcher.SetErrCode(reply.Response.ResponseResult.Error.Code), reply.Response.ResponseResult.Error.Message)
+					}
+				}
+				gof.Logger.Debugf("on post: RESULT MESSAGE: %s.", reply.Response.ResponseResult.Error.Message)
+				gof.Logger.Debug("on post: Closing response.")
+				response.Close()
+			}
+			setError = func(code int, message string) {
+				reply.Response.ResponseResult.Error.Code = code
+				reply.Response.ResponseResult.Error.Message = message
+			}
+
+			setResult = func(resp *http.Response, body []byte) {
+				reply.Response.ResponseResult.ResponseBody.Done = true
+				reply.Response.ResponseResult.ResponseBody.StatusCode = int64(resp.StatusCode)
+				reply.Response.ResponseResult.ResponseBody.Body = body
+			}
+			return request, defereFunc, setError, setResult
+		}
+	}
+	}
+	
 	return func(request *cocaine.Request, response *cocaine.Response) {
-		gofetcher.handler(method, request, response)
+		gof.handler(argumentsFactory, request, response)
 	}
 }
 

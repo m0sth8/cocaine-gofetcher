@@ -1,0 +1,74 @@
+gofetcher (0.1.0ubuntu8) utopic; urgency=medium
+
+  * Добавлены описания методов
+  * Откат лишних изменений
+  * Исправлена папка инсталляции хидеров
+  * Добавлено создание пакета с хидерами
+  * Добавлен метод post
+  * Добавлены спеки на методы delete, put, patch
+
+ -- rtarasov <autobuilder@corp.sputnik.ru>  Tue, 27 Oct 2015 17:48:31 +0300
+
+gofetcher (0.1.0ubuntu7) utopic; urgency=medium
+
+  * Version bump for Jenkins test
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Mon, 05 Oct 2015 16:10:13 +0300
+
+gofetcher (0.1.0ubuntu6) utopic; urgency=medium
+
+  * Version bump for Jenkins test
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Mon, 05 Oct 2015 14:35:47 +0300
+
+gofetcher (0.1.0ubuntu5) utopic; urgency=medium
+
+  [ rtarasov ]
+  * Добавлен метод ping
+
+  [ Vitaly Isaev ]
+  * Manifest default for all stands
+
+  [ rtarasov ]
+
+ -- rtarasov <autobuilder@corp.sputnik.ru>  Mon, 05 Oct 2015 13:50:06 +0300
+
+gofetcher (0.1.0ubuntu4) utopic; urgency=medium
+
+  * Manifest for testing stand
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Fri, 02 Oct 2015 19:12:12 +0300
+
+gofetcher (0.1.0ubuntu3) utopic; urgency=medium
+
+  * Update control
+
+ -- Vitaly Isaev <autobuilder@corp.sputnik.ru>  Fri, 02 Oct 2015 18:16:55 +0300
+
+gofetcher (0.1.0ubuntu2) utopic; urgency=medium
+
+  [ Autobuilder ]
+  * ID 426
+  * Rename again
+
+  [ Vitaly Isaev ]
+  * Update control
+
+  [ Autobuilder ]
+  * Fixes...:
+
+  [ rtarasov ]
+  * Renamed project to workaround name collisions
+  * Renamed project
+
+  [ Autobuilder ]
+  * Rules modified
+  * Debian fix + CMakelists gobuild -> goinstall
+
+ -- Autobuilder <autobuilder@corp.sputnik.ru>  Fri, 02 Oct 2015 17:57:19 +0300
+
+gofetcher (0.1.0ubuntu1) unstable; urgency=low
+
+  * Starting build
+
+ -- Nobody <autobuilder@corp.sputnik.ru>  Thu, 27 Aug 2015 16:22:34 +0300
