@@ -6,17 +6,17 @@
         "namespace": "Gofetcher::Put",
         "request_params": [
             ["std::string", "url", {"required": true}],
-            ["std::vector<unsigned char>", "body"],
+            ["std::vector<char>", "body"],
             ["autojsoncxx::utility::int64_t", "timeout"],
             ["std::map<std::string, std::string>", "cookies"],
-            ["std::map<std::string, std::string>", "headers"],
+            ["std::map<std::string, std::vector<std::string> >", "headers"],
             ["bool", "follow_redirects"]
         ],
         "result_body": [
-            ["bool", "done", {"default": false}],
-            ["std::vector<unsigned char>", "body"],
-            ["autojsoncxx::utility::int64_t", "status_code"],
-            ["std::map<std::string, std::vector<std::string> >", "headers"]
+            ["bool", "done", {"default": false, "required": true}],
+            ["std::vector<char>", "body", {"required": true}],
+            ["autojsoncxx::utility::int64_t", "status_code", {"required": true}],
+            ["std::map<std::string, std::vector<std::string> >", "headers", {"required": true}]
         ]
     }
 }

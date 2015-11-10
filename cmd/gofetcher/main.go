@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/cocaine/cocaine-framework-go/cocaine"
 	"github.com/m0sth8/cocaine-gofetcher/gofetcher"
+	"github.com/m0sth8/cocaine-gofetcher/gogen/gofetcher/version"
 )
 
 func on_ping(request *cocaine.Request, response *cocaine.Response) {
@@ -11,7 +12,7 @@ func on_ping(request *cocaine.Request, response *cocaine.Response) {
 }
 
 func main(){
-	fetcher := gofetcher.NewGofetcher()
+	fetcher := gofetcher.NewGofetcher(version.GetAppVersion())
 	if fetcher != nil{
 		binds := map[string]cocaine.EventHandler{
 			"get": fetcher.GetHandler("GET"),
